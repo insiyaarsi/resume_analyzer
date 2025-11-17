@@ -1,0 +1,39 @@
+Junior Full Stack Developer — React / Node / AWS
+
+Location: Hybrid — Delhi
+Type: Entry-Level
+
+Role Summary
+As a Junior Full Stack Developer, you’ll work across the stack to develop new features for our SaaS product. You’ll build responsive UIs, REST APIs, and cloud-deployed services.
+
+Responsibilities
+
+⦁	Build interactive UI components using React + TypeScript.
+
+⦁	Implement backend endpoints using Node.js, Express, and MongoDB/PostgreSQL.
+
+⦁	Write integration tests and maintain API documentation (OpenAPI/Swagger).
+
+⦁	Deploy full stack features using AWS Amplify or ECS.
+
+⦁	Collaborate with the design team to refine UX.
+
+Required Skills
+
+⦁	JavaScript/TypeScript
+
+⦁	React, Node.js
+
+⦁	SQL or NoSQL databases
+
+⦁	Git, REST API principles
+
+⦁	Basic understanding of deployment (CI/CD)
+
+Good to Have
+
+⦁	AWS or cloud certifications
+
+⦁	Experience with Redux or Zustand
+
+⦁	Knowledge of authentication flows (OAuth/JWT)

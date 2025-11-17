@@ -1,0 +1,43 @@
+Machine Learning Engineer — NLP & Information Retrieval
+
+Location: Toronto
+Type: Full-Time
+Experience Level: Entry–Mid
+
+About the role:
+We are looking for a Machine Learning Engineer to join our NLP research team. You will work on building search, ranking, and recommendation models that power our internal knowledge platform. You’ll collaborate with data engineers, product managers, and applied scientists to deploy ML models at scale.
+
+Responsibilities:
+
+1. Develop and fine-tune NLP models (BERT, DistilBERT, SBERT, Transformer-based architectures).
+
+2. Implement embedding pipelines for semantic search and document ranking.
+
+3. Build ML workflows for text classification, summarization, and entity extraction.
+
+4. Work with vector databases (FAISS, Pinecone, Weaviate) to optimize retrieval performance.
+
+5. Deploy models to production using Docker, FastAPI, and AWS (Lambda/ECS).
+
+6. Monitor model performance and retrain models using automated pipelines.
+
+
+Required Skills:
+
+⦁	Python, PyTorch or TensorFlow
+
+⦁	Experience with Transformers / HuggingFace
+
+⦁	Docker, AWS basics
+
+⦁	Strong grasp of statistics, embeddings, and similarity search
+
+⦁	Ability to write clean, modular, testable code
+
+Good to Have
+
+⦁	Knowledge of LLM fine-tuning or prompt engineering
+
+⦁	Experience with MLOps tools (MLflow, Weights & Biases)
+
+⦁	Experience with Spark for data processing
