@@ -212,10 +212,57 @@ class NLPAnalyzer:
         
         return skills_list
     
+    def extract_metrics_from_text(self, text: str) -> List[Dict[str, str]]:
+        """
+        Extract quantifiable metrics from text.
+        Returns list of metrics found with their context.
+        """
+        metrics = []
+        
+        # Metric patterns
+        patterns = [
+            # Percentages: "increased by 40%", "95% accuracy"
+            (r'(\d+(?:\.\d+)?)\s*%', 'percentage'),
+            
+            # Money: "$50K", "$1.5M", "$500,000"
+            (r'\$\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*([KMB])?', 'money'),
+            
+            # Numbers with units: "500 users", "10K customers", "2M downloads"
+            (r'(\d+(?:\.\d+)?)\s*([KMB])?\s*(users?|customers?|clients?|people|employees?|members?)', 'users'),
+            
+            # Time periods: "within 6 months", "in 3 weeks"
+            (r'(\d+)\s*(weeks?|months?|years?|days?|hours?)', 'time'),
+            
+            # Multipliers: "3x faster", "10x improvement"
+            (r'(\d+(?:\.\d+)?)\s*x\s*(faster|improvement|increase|growth|reduction)', 'multiplier'),
+            
+            # Performance improvements: "reduced latency by 200ms"
+            (r'reduced?\s+(\w+)\s+by\s+(\d+(?:\.\d+)?)\s*(%|ms|seconds?|minutes?)?', 'reduction'),
+            (r'increased?\s+(\w+)\s+by\s+(\d+(?:\.\d+)?)\s*(%|x)?', 'increase'),
+            (r'improved?\s+(\w+)\s+by\s+(\d+(?:\.\d+)?)\s*(%|x)?', 'improvement'),
+            
+            # Team size: "led team of 5", "managed 10 engineers"
+            (r'(led|managed|supervised)\s+(?:team\s+of\s+)?(\d+)\s*(engineers?|developers?|people|members?)?', 'team_size'),
+            
+            # Scale: "processed 1M records", "handled 10K requests"
+            (r'(processed|handled|managed|served)\s+(\d+(?:\.\d+)?)\s*([KMB])?\s*(records?|requests?|transactions?|queries?)', 'scale'),
+        ]
+        
+        for pattern, metric_type in patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                metrics.append({
+                    'type': metric_type,
+                    'value': match.group(0),
+                    'position': match.start()
+                })
+        
+        return metrics
+    
     def extract_experience(self, text: str, section_text: Optional[str] = None) -> List[Experience]:
         """
         Extract work experience entries from resume.
-        Focuses on the experience section if provided.
+        Enhanced with metrics detection and better parsing.
         """
         experiences = []
         target_text = section_text if section_text else text
@@ -226,19 +273,17 @@ class NLPAnalyzer:
         # Find organizations (potential companies)
         organizations = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
         
-        # Find date ranges
+        # Enhanced date patterns
         date_patterns = [
-            r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b',
-            r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—]\s*Present\b',
-            r'\b\d{4}\s*[-–—]\s*\d{4}\b',
-            r'\b\d{4}\s*[-–—]\s*Present\b',
+            r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—to]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b',
+            r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—to]\s*Present\b',
+            r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—to]\s*Current\b',
+            r'\b\d{4}\s*[-–—to]\s*\d{4}\b',
+            r'\b\d{4}\s*[-–—to]\s*(Present|Current|Now)\b',
+            r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}\s*[-–—]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}\b',
         ]
         
-        dates = []
-        for pattern in date_patterns:
-            dates.extend(re.findall(pattern, target_text, re.IGNORECASE))
-        
-        # Split text into potential job entries (by date ranges or organizations)
+        # Split text into potential job entries
         lines = target_text.split('\n')
         current_experience = None
         
@@ -267,37 +312,66 @@ class NLPAnalyzer:
                         break
                 
                 # Try to extract title and company from this line
-                # Common format: "Job Title at Company Name | Date"
-                parts = re.split(r'\s+at\s+|\s+[@|]\s+', line, flags=re.IGNORECASE)
+                # Common formats:
+                # "Job Title at Company Name | Date"
+                # "Job Title - Company Name | Date"
+                # "Job Title, Company Name | Date"
                 
-                if len(parts) >= 2:
-                    current_experience.title = parts[0].strip()
-                    # Remove date from company name
-                    company = parts[1]
-                    for pattern in date_patterns:
-                        company = re.sub(pattern, '', company, flags=re.IGNORECASE)
-                    current_experience.company = company.strip(' |–—-')
-                else:
-                    # Try to identify job title from common titles
+                # Remove date from line first
+                line_without_date = line
+                for pattern in date_patterns:
+                    line_without_date = re.sub(pattern, '', line_without_date, flags=re.IGNORECASE)
+                
+                # Try different separators
+                separators = [r'\s+at\s+', r'\s+[@|]\s+', r'\s+-\s+', r',\s+']
+                
+                for separator in separators:
+                    parts = re.split(separator, line_without_date, maxsplit=1, flags=re.IGNORECASE)
+                    if len(parts) >= 2:
+                        current_experience.title = parts[0].strip(' |–—-,')
+                        current_experience.company = parts[1].strip(' |–—-,')
+                        break
+                
+                # If we didn't find title/company, try to identify job title
+                if not current_experience.title:
+                    from app.data.skills_database import JOB_TITLES
                     for job_title in JOB_TITLES:
                         if job_title in line_stripped.lower():
-                            current_experience.title = line_stripped
+                            current_experience.title = line_stripped.strip()
                             break
             
             elif current_experience:
                 # This is a description line
-                if line_stripped.startswith(('•', '-', '*', '◦')):
+                if line_stripped.startswith(('•', '-', '*', '◦', '▪', '▫', '–', '—')):
                     # Bullet point
-                    description = line_stripped.lstrip('•-*◦ ')
-                    current_experience.description.append(description)
+                    description = line_stripped.lstrip('•-*◦▪▫–— ')
                     
-                    # Extract skills from this bullet point
-                    skills = self.extract_skills(description)
+                    if description:  # Only add non-empty descriptions
+                        current_experience.description.append(description)
+                        
+                        # Extract skills from this bullet point
+                        skills = self.extract_skills(description)
+                        for skill in skills:
+                            if skill.name not in current_experience.skills_used:
+                                current_experience.skills_used.append(skill.name)
+                        
+                        # Extract metrics from this bullet point
+                        metrics = self.extract_metrics_from_text(description)
+                        if metrics:
+                            # Mark this bullet as having metrics (useful for impact scoring)
+                            if not hasattr(current_experience, 'metrics_count'):
+                                current_experience.metrics_count = 0
+                            current_experience.metrics_count += len(metrics)
+                            
+                elif len(line_stripped) > 20:  # Ignore very short lines
+                    # Paragraph-style description
+                    current_experience.description.append(line_stripped)
+                    
+                    # Also extract skills from paragraph
+                    skills = self.extract_skills(line_stripped)
                     for skill in skills:
                         if skill.name not in current_experience.skills_used:
                             current_experience.skills_used.append(skill.name)
-                elif len(line_stripped) > 20:  # Ignore very short lines
-                    current_experience.description.append(line_stripped)
         
         # Don't forget the last experience
         if current_experience:
