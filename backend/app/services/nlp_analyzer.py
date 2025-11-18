@@ -66,14 +66,30 @@ class NLPAnalyzer:
             raise RuntimeError(
                 "spaCy model not found. Run: python -m spacy download en_core_web_sm"
             )
+    
+        # Import updated functions
+        from app.data.skills_database import (
+            get_all_technical_skills,
+            SOFT_SKILLS,
+            SKILL_SYNONYMS,
+            ACRONYMS,
+            normalize_skill,
+            get_skill_variations,
+            get_skill_category
+        )
         
         # Load skills databases
         self.technical_skills = set(get_all_technical_skills())
         self.soft_skills = set(SOFT_SKILLS)
         self.all_skills = self.technical_skills.union(self.soft_skills)
+        self.skill_synonyms = SKILL_SYNONYMS
+        self.acronyms = ACRONYMS
+        self.normalize_skill = normalize_skill
+        self.get_skill_variations = get_skill_variations
+        self.get_skill_category = get_skill_category
         
-        # Create skill variations (e.g., "react" -> ["react", "react.js", "reactjs"])
-        self.skill_variations = self._build_skill_variations()
+        # Remove old skill_variations building
+        # self.skill_variations = self._build_skill_variations()
         
     def _build_skill_variations(self) -> Dict[str, Set[str]]:
         """Build a mapping of skills to their variations."""
@@ -102,7 +118,7 @@ class NLPAnalyzer:
     
     def extract_skills(self, text: str) -> List[Skill]:
         """
-        Extract skills from text using multiple methods.
+        Extract skills from text using multiple advanced methods.
         Returns list of Skill objects with confidence scores.
         """
         text_lower = text.lower()
@@ -110,52 +126,80 @@ class NLPAnalyzer:
         
         # Method 1: Direct string matching with word boundaries
         for skill in self.all_skills:
-            # Create regex pattern with word boundaries
             pattern = r'\b' + re.escape(skill) + r'\b'
             
             if re.search(pattern, text_lower):
-                confidence = 0.9  # High confidence for exact match
-                
-                # Boost confidence if mentioned multiple times
+                confidence = 0.9
                 count = len(re.findall(pattern, text_lower))
                 confidence = min(0.99, confidence + (count - 1) * 0.02)
                 
-                found_skills[skill] = confidence
+                # Normalize the skill
+                normalized = self.normalize_skill(skill)
+                if normalized in found_skills:
+                    found_skills[normalized] = max(found_skills[normalized], confidence)
+                else:
+                    found_skills[normalized] = confidence
         
-        # Method 2: Check skill variations
-        for base_skill, variations in self.skill_variations.items():
+        # Method 2: Check skill variations and synonyms
+        for canonical, variations in self.skill_synonyms.items():
             for variant in variations:
                 pattern = r'\b' + re.escape(variant) + r'\b'
-                if re.search(pattern, text_lower) and base_skill not in found_skills:
-                    found_skills[base_skill] = 0.85
+                if re.search(pattern, text_lower):
+                    if canonical in found_skills:
+                        found_skills[canonical] = min(0.99, found_skills[canonical] + 0.03)
+                    else:
+                        found_skills[canonical] = 0.87
         
-        # Method 3: Use spaCy NER for additional context
+        # Method 3: Acronym detection (case-sensitive)
+        for acronym, full_form in self.acronyms.items():
+            # Look for uppercase acronyms
+            pattern = r'\b' + re.escape(acronym.upper()) + r'\b'
+            if re.search(pattern, text):
+                if full_form in found_skills:
+                    found_skills[full_form] = min(0.99, found_skills[full_form] + 0.05)
+                else:
+                    found_skills[full_form] = 0.85
+        
+        # Method 4: Use spaCy NER for additional context
         doc = self.nlp(text)
         
-        # Look for skills near action verbs (stronger signal)
         action_verbs = {
             "developed", "built", "created", "designed", "implemented",
             "deployed", "optimized", "improved", "led", "managed",
-            "architected", "engineered", "programmed", "coded"
+            "architected", "engineered", "programmed", "coded", "configured",
+            "maintained", "automated", "migrated", "integrated", "scaled"
         }
         
         for token in doc:
             if token.lemma_ in action_verbs:
-                # Check nearby tokens for skills
-                window = 10  # tokens
+                window = 15
                 start = max(0, token.i - window)
                 end = min(len(doc), token.i + window)
                 
                 context = doc[start:end].text.lower()
                 for skill in self.all_skills:
-                    if skill in context and skill in found_skills:
-                        # Boost confidence if skill appears near action verb
-                        found_skills[skill] = min(0.99, found_skills[skill] + 0.05)
+                    normalized = self.normalize_skill(skill)
+                    if skill in context and normalized in found_skills:
+                        found_skills[normalized] = min(0.99, found_skills[normalized] + 0.05)
+        
+        # Method 5: Section-based boosting (skills mentioned in "Skills" section)
+        skills_section_patterns = [
+            r'(skills?|technical skills?|core competencies|expertise)[\s\S]{0,500}',
+        ]
+        
+        for pattern in skills_section_patterns:
+            match = re.search(pattern, text_lower, re.IGNORECASE)
+            if match:
+                skills_text = match.group(0)
+                for skill in self.all_skills:
+                    normalized = self.normalize_skill(skill)
+                    if skill in skills_text and normalized in found_skills:
+                        found_skills[normalized] = min(0.99, found_skills[normalized] + 0.08)
         
         # Convert to Skill objects
         skills_list = []
         for skill_name, confidence in found_skills.items():
-            category = get_skill_category(skill_name)
+            category = self.get_skill_category(skill_name)
             
             skills_list.append(Skill(
                 name=skill_name,
